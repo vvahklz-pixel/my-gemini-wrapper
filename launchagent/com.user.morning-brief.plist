@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.morning-brief</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- setup.sh가 node 경로를 자동으로 채워줍니다 -->
+        <string>NODE_PATH_PLACEHOLDER</string>
+        <string>--import</string>
+        <string>tsx/esm</string>
+        <string>PROJECT_PATH_PLACEHOLDER/scripts/morning-brief.ts</string>
+    </array>
+
+    <!-- 매일 오전 8시 실행 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- 실행 디렉토리 (PROJECT_PATH_PLACEHOLDER는 setup.sh가 교체) -->
+    <key>WorkingDirectory</key>
+    <string>PROJECT_PATH_PLACEHOLDER</string>
+
+    <!-- 로그 -->
+    <key>StandardOutPath</key>
+    <string>PROJECT_PATH_PLACEHOLDER/logs/morning-brief.log</string>
+    <key>StandardErrorPath</key>
+    <string>PROJECT_PATH_PLACEHOLDER/logs/morning-brief-error.log</string>
+
+    <!-- 실패 시 재시도 안 함 (다음날 재실행) -->
+    <key>StartInterval</key>
+    <integer>0</integer>
+
+    <!-- 환경변수: PATH 설정으로 node/npx 경로 확보 -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+</dict>
+</plist>

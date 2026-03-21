@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 브리핑 데이터 및 로그 (개인 데이터)
+/data/*.json
+/logs/*.log

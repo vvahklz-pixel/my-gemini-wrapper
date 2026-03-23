@@ -69,16 +69,17 @@ function dedup(items: NewsItem[]): NewsItem[] {
 
 interface LLMHeadline {
   idx: number;
+  titleKr?: string;
   insight: string;
   signal: '매수우세' | '중립' | '매도우세';
   riskLevel: 'HIGH' | 'MED' | 'LOW';
 }
 
-function mapHeadlines(raw: LLMHeadline[], items: NewsItem[]): HeadlineItem[] {
+function mapHeadlines(raw: LLMHeadline[], items: NewsItem[], useTranslatedTitle = false): HeadlineItem[] {
   return (raw ?? [])
     .filter((h) => typeof h.idx === 'number' && h.idx >= 0 && h.idx < items.length)
     .map((h) => ({
-      title: items[h.idx].title,
+      title: (useTranslatedTitle && h.titleKr) ? h.titleKr : items[h.idx].title,
       source: items[h.idx].source,
       link: items[h.idx].link,
       imageUrl: items[h.idx].imageUrl,
@@ -121,7 +122,7 @@ function buildList(items: NewsItem[]): string {
   return items.map((i, n) => `[${n}] ${i.source} | ${i.title} | ${i.description.slice(0, 80)}`).join('\n');
 }
 
-const SECTION_SCHEMA = `{
+const KOREAN_SCHEMA = `{
   "summary": "<오늘 뉴스 전체 흐름 3문장>",
   "macroView": "<금리·환율·경기 실제 영향 2문장>",
   "techView": "<실적·섹터 실제 기회와 리스크 2문장>",
@@ -134,12 +135,25 @@ const SECTION_SCHEMA = `{
   "headlines": [{"idx": 0, "insight": "<투자 영향 1줄>", "signal": "매수우세 또는 중립 또는 매도우세", "riskLevel": "HIGH 또는 MED 또는 LOW"}]
 }`;
 
+const GLOBAL_SCHEMA = `{
+  "summary": "<글로벌 뉴스 전체 흐름 요약 3문장 — 한국어>",
+  "macroView": "<글로벌 금리·달러·경기 영향 분석 2문장 — 한국어>",
+  "techView": "<글로벌 실적·섹터 기회와 리스크 2문장 — 한국어>",
+  "realEstateView": "<글로벌 부동산·금리 영향 1문장 한국어, 해당 없으면 null>",
+  "signal": "매수우세 또는 중립 또는 매도우세",
+  "signalReason": "<시그널 근거 한 줄 — 한국어>",
+  "riskLevel": "HIGH 또는 MED 또는 LOW",
+  "keyThemes": ["<한국어테마>", "<한국어테마>", "<한국어테마>"],
+  "keywords": ["<한국어키워드>", "<한국어키워드>", "<한국어키워드>", "<한국어키워드>", "<한국어키워드>", "<한국어키워드>", "<한국어키워드>", "<한국어키워드>"],
+  "headlines": [{"idx": 0, "titleKr": "<기사 제목 한국어 번역>", "insight": "<한국 투자자 관점 영향 1줄 — 한국어>", "signal": "매수우세 또는 중립 또는 매도우세", "riskLevel": "HIGH 또는 MED 또는 LOW"}]
+}`;
+
 function buildKoreanPrompt(items: NewsItem[]): string {
-  return `한국 경제 뉴스를 분석하고 아래 JSON 형식으로만 반환하라. 마크다운 금지.\n\n${buildList(items)}\n\n${SECTION_SCHEMA}\n\n주의: "테마1", "키워드8개" 같은 예시 텍스트 금지 — 반드시 실제 분석 내용. headlines는 중요 뉴스 5개, idx는 위 목록 번호.`;
+  return `한국 경제 뉴스를 분석하고 아래 JSON 형식으로만 반환하라. 마크다운 금지.\n\n${buildList(items)}\n\n${KOREAN_SCHEMA}\n\n주의: "테마1", "키워드8개" 같은 예시 텍스트 금지 — 반드시 실제 분석 내용. headlines는 중요 뉴스 5개, idx는 위 목록 번호.`;
 }
 
 function buildGlobalPrompt(items: NewsItem[]): string {
-  return `Analyze global economic news for Korean investors. Return only the JSON below. No markdown. All values in Korean.\n\n${buildList(items)}\n\n${SECTION_SCHEMA}\n\n주의: "테마1", "키워드8개" 같은 예시 텍스트 금지 — 반드시 실제 분석 내용. headlines는 5 most important, idx from list above.`;
+  return `You are analyzing global economic news for Korean investors. ALL output must be in Korean (한국어). Translate all titles, summaries, and analysis into Korean. Return only the JSON below. No markdown.\n\n${buildList(items)}\n\n${GLOBAL_SCHEMA}\n\n규칙: 모든 텍스트 값은 반드시 한국어. titleKr은 원문 제목의 한국어 번역. "테마1" 같은 예시 텍스트 금지. headlines는 중요 뉴스 5개, idx는 위 목록 번호.`;
 }
 
 function buildInsightPrompt(korean: DigestSection, global: DigestSection): string {
@@ -201,7 +215,7 @@ export async function generateDigest(
     signal: (koreanRaw.signal as DigestSection['signal']) ?? '중립',
     signalReason: koreanRaw.signalReason ?? '',
     riskLevel: (koreanRaw.riskLevel as DigestSection['riskLevel']) ?? 'MED',
-    headlines: mapHeadlines(koreanRaw.headlines ?? [], koreanDeduped),
+    headlines: mapHeadlines(koreanRaw.headlines ?? [], koreanDeduped, false),
   };
   const global: DigestSection = {
     ...globalRaw,
@@ -213,7 +227,7 @@ export async function generateDigest(
     signal: (globalRaw.signal as DigestSection['signal']) ?? '중립',
     signalReason: globalRaw.signalReason ?? '',
     riskLevel: (globalRaw.riskLevel as DigestSection['riskLevel']) ?? 'MED',
-    headlines: mapHeadlines(globalRaw.headlines ?? [], globalDeduped),
+    headlines: mapHeadlines(globalRaw.headlines ?? [], globalDeduped, true),
   };
 
   const insightText = await callGroq(buildInsightPrompt(korean, global));

@@ -6,6 +6,7 @@ export interface NewsItem {
   link: string;
   pubDate: string;
   source: string;
+  imageUrl?: string;
 }
 
 const parser = new XMLParser({
@@ -39,6 +40,39 @@ function extractText(val: unknown): string {
   return String(val);
 }
 
+function asArray<T>(val: unknown): T[] {
+  if (!val) return [];
+  return Array.isArray(val) ? (val as T[]) : [val as T];
+}
+
+function extractImage(item: Record<string, unknown>, rawDesc: string): string | undefined {
+  // 1. media:content
+  for (const m of asArray<Record<string, unknown>>(item['media:content'])) {
+    const url = m['@_url'] as string | undefined;
+    if (url) return url;
+  }
+
+  // 2. media:thumbnail
+  for (const m of asArray<Record<string, unknown>>(item['media:thumbnail'])) {
+    const url = m['@_url'] as string | undefined;
+    if (url) return url;
+  }
+
+  // 3. enclosure with image type
+  const enc = item['enclosure'] as Record<string, unknown> | undefined;
+  if (enc) {
+    const type = String(enc['@_type'] || '');
+    const url = enc['@_url'] as string | undefined;
+    if (url && type.startsWith('image/')) return url;
+  }
+
+  // 4. <img src="..."> in raw description HTML (before stripHtml)
+  const imgMatch = rawDesc.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (imgMatch) return imgMatch[1];
+
+  return undefined;
+}
+
 function extractLink(item: Record<string, unknown>): string {
   const link = item['link'];
   if (!link) return '';
@@ -70,16 +104,18 @@ export async function fetchFeed(url: string, sourceName: string): Promise<NewsIt
     if (channel) {
       const items: Record<string, unknown>[] = channel.item || [];
       return items
-        .slice(0, 15)
-        .map((item) => ({
-          title: stripHtml(extractText(item['title'])),
-          description: stripHtml(
-            extractText(item['description'] || item['content:encoded'] || '')
-          ).slice(0, 400),
-          link: extractLink(item),
-          pubDate: extractText(item['pubDate'] || item['dc:date'] || ''),
-          source: sourceName,
-        }))
+        .slice(0, 20)
+        .map((item) => {
+          const rawDesc = extractText(item['description'] || item['content:encoded'] || '');
+          return {
+            title: stripHtml(extractText(item['title'])),
+            description: stripHtml(rawDesc).slice(0, 400),
+            link: extractLink(item),
+            pubDate: extractText(item['pubDate'] || item['dc:date'] || ''),
+            source: sourceName,
+            imageUrl: extractImage(item, rawDesc),
+          };
+        })
         .filter((i) => i.title);
     }
 
@@ -88,22 +124,24 @@ export async function fetchFeed(url: string, sourceName: string): Promise<NewsIt
     if (feed) {
       const entries: Record<string, unknown>[] = feed.entry || [];
       return entries
-        .slice(0, 15)
-        .map((entry) => ({
-          title: stripHtml(extractText(entry['title'])),
-          description: stripHtml(
-            extractText(
-              (entry['summary'] as Record<string, unknown>)?.['#text'] ||
-                entry['summary'] ||
-                (entry['content'] as Record<string, unknown>)?.['#text'] ||
-                entry['content'] ||
-                ''
-            )
-          ).slice(0, 400),
-          link: extractLink(entry),
-          pubDate: extractText(entry['published'] || entry['updated'] || ''),
-          source: sourceName,
-        }))
+        .slice(0, 20)
+        .map((entry) => {
+          const rawDesc = extractText(
+            (entry['summary'] as Record<string, unknown>)?.['#text'] ||
+              entry['summary'] ||
+              (entry['content'] as Record<string, unknown>)?.['#text'] ||
+              entry['content'] ||
+              ''
+          );
+          return {
+            title: stripHtml(extractText(entry['title'])),
+            description: stripHtml(rawDesc).slice(0, 400),
+            link: extractLink(entry),
+            pubDate: extractText(entry['published'] || entry['updated'] || ''),
+            source: sourceName,
+            imageUrl: extractImage(entry, rawDesc),
+          };
+        })
         .filter((i) => i.title);
     }
 

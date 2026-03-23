@@ -60,12 +60,13 @@ async function main() {
       // Digest를 NewsBriefing 포맷으로 변환하여 Telegram 전송
       const briefingForTelegram: NewsBriefing = {
         date: digest.date,
-        summary: `${digest.korean.summary}\n\n${digest.global.summary}`,
-        keyPoints: digest.investmentInsights,
-        marketOutlook: digest.global.summary,
+        macro: digest.korean.macroView || digest.global.macroView || '',
+        tech: digest.korean.techView || digest.global.techView || '',
+        realEstate: digest.korean.realEstateView || digest.global.realEstateView || undefined,
+        signal: digest.korean.signal ?? '중립',
+        signalReason: digest.korean.signalReason || digest.global.signalReason || '',
+        riskLevel: digest.korean.riskLevel ?? 'MED',
         rawNewsCount: koreanItems.length + globalItems.length,
-        categories: [],
-        sourceCount: { domestic: koreanItems.length, global: globalItems.length },
       };
       await sendTelegramBriefing(briefingForTelegram);
       console.log('Telegram 전송 완료');

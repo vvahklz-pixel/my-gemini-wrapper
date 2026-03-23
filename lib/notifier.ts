@@ -18,18 +18,17 @@ export async function sendTelegramBriefing(briefing: NewsBriefing): Promise<void
     throw new Error('TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 환경변수가 없습니다');
   }
 
-  const keyPointsText = briefing.keyPoints
-    .map((p, i) => `${i + 1}. ${p}`)
-    .join('\n');
-
   const message =
     `📰 *경제 뉴스 브리핑* — ${briefing.date}\n` +
     `\n` +
-    `📊 *오늘의 경제 흐름*\n${briefing.summary}\n` +
+    `📊 *매크로*\n${briefing.macro}\n` +
     `\n` +
-    `🔑 *핵심 포인트*\n${keyPointsText}\n` +
+    `💻 *테크·기업*\n${briefing.tech}\n` +
+    (briefing.realEstate ? `\n🏠 *부동산*\n${briefing.realEstate}\n` : '') +
     `\n` +
-    `📈 *시장 전망*\n${briefing.marketOutlook}\n` +
+    `⚡ *투자 시그널:* [${briefing.signal}] ${briefing.signalReason}\n` +
+    `\n` +
+    `🔴 *리스크 레벨:* [${briefing.riskLevel}]\n` +
     `\n` +
     `_뉴스 ${briefing.rawNewsCount}건 분석 완료_`;
 

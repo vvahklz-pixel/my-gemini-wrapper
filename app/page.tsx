@@ -1,143 +1,38 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import type { Digest, HeadlineItem } from '@/lib/gemini';
-
-interface DigestResponse extends Digest {
-  cached?: boolean;
-  error?: string;
-}
+import { useEffect, useState } from 'react';
+import { useDigest } from '@/app/hooks/useDigest';
+import { useMarkets } from '@/app/hooks/useMarkets';
+import TickerBar from '@/app/components/TickerBar';
+import MarketDetailPanel from '@/app/components/MarketDetailPanel';
+import KeywordCloud from '@/app/components/KeywordCloud';
+import SkeletonCard from '@/app/components/SkeletonCard';
+import InsightsCard from '@/app/components/InsightsCard';
+import SectionCard from '@/app/components/SectionCard';
+import ChatPanel, { type Message as ChatMessage } from '@/app/components/ChatPanel';
 
 const TABS = [
   { id: 'all', label: '전체' },
   { id: 'korean', label: '국내경제' },
   { id: 'global', label: '해외경제' },
+  { id: 'keywords', label: '키워드' },
+  { id: 'chat', label: 'AI 상담' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
-function SkeletonCard({ lines = 3 }: { lines?: number }) {
-  return (
-    <div className="bg-white rounded-2xl p-5 space-y-3 animate-pulse">
-      <div className="h-3.5 bg-gray-100 rounded-full w-1/3" />
-      {Array.from({ length: lines }).map((_, i) => (
-        <div key={i} className="h-3 bg-gray-100 rounded-full" style={{ width: `${90 - i * 10}%` }} />
-      ))}
-    </div>
-  );
-}
-
-function InsightsCard({ insights }: { insights: string[] }) {
-  return (
-    <div className="bg-[#3182F6] rounded-2xl p-5 text-white">
-      <p className="text-xs font-semibold text-white/60 uppercase tracking-widest mb-4">오늘의 투자 인사이트</p>
-      <ol className="space-y-3">
-        {insights.map((insight, i) => (
-          <li key={i} className="flex gap-3 text-sm leading-relaxed text-white/90">
-            <span className="flex-none w-5 h-5 rounded-full bg-white/20 text-white text-xs font-bold flex items-center justify-center mt-0.5">
-              {i + 1}
-            </span>
-            <span>{insight}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
-
-function SectionCard({
-  title,
-  summary,
-  keyThemes,
-  headlines,
-  badge,
-}: {
-  title: string;
-  summary: string;
-  keyThemes: string[];
-  headlines: HeadlineItem[];
-  badge?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl overflow-hidden">
-      <div className="p-5 border-b border-[#F5F6F8]">
-        <div className="flex items-center gap-2 mb-3">
-          {badge && (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#EBF3FE] text-[#3182F6]">
-              {badge}
-            </span>
-          )}
-          <p className="text-xs font-semibold text-[#8B95A1] uppercase tracking-widest">{title}</p>
-        </div>
-        <p className="text-sm text-[#191F28] leading-relaxed">{summary}</p>
-      </div>
-
-      {keyThemes.length > 0 && (
-        <div className="px-5 py-4 border-b border-[#F5F6F8]">
-          <p className="text-xs font-semibold text-[#8B95A1] mb-3">핵심 테마</p>
-          <div className="flex flex-wrap gap-2">
-            {keyThemes.map((theme, i) => (
-              <span key={i} className="px-3 py-1 bg-[#F5F6F8] rounded-full text-xs text-[#191F28] font-medium">
-                {theme}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {headlines.length > 0 && (
-        <div className="divide-y divide-[#F5F6F8]">
-          {headlines.map((h, i) => (
-            <a
-              key={i}
-              href={h.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block px-5 py-4 hover:bg-[#F5F6F8] transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#191F28] leading-snug mb-1">{h.title}</p>
-                  <p className="text-xs text-[#3182F6] leading-relaxed">{h.insight}</p>
-                </div>
-                <svg className="flex-none w-4 h-4 text-[#B0B8C1] mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-              <p className="text-xs text-[#B0B8C1] mt-1.5">{h.source}</p>
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function Home() {
-  const [digest, setDigest] = useState<DigestResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { digest, loading, error, fetchDigest } = useDigest();
+  const { markets, selectedMarket, setSelectedMarket, fetchMarkets, toggleMarket } = useMarkets();
   const [activeTab, setActiveTab] = useState<TabId>('all');
-
-  const fetchDigest = useCallback(async (forceRefresh = false) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const url = forceRefresh ? '/api/news?refresh=true' : '/api/news';
-      const res = await fetch(url);
-      const data: DigestResponse = await res.json();
-      if (!res.ok) throw new Error(data.error || '오류가 발생했습니다');
-      setDigest(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '알 수 없는 오류');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     fetchDigest();
-  }, [fetchDigest]);
+    fetchMarkets();
+    const interval = setInterval(fetchMarkets, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchDigest, fetchMarkets]);
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
@@ -145,9 +40,20 @@ export default function Home() {
   const greeting = hour < 12 ? '좋은 아침이에요' : hour < 18 ? '좋은 오후예요' : '좋은 저녁이에요';
 
   return (
-    <div className="max-w-md mx-auto min-h-screen">
+    <div className="h-screen flex flex-col overflow-hidden bg-[#F5F6F8]">
+
+      {/* Ticker bar */}
+      {markets.length > 0 && (
+        <TickerBar
+          markets={markets}
+          selectedSymbol={selectedMarket?.symbol ?? null}
+          onSelect={toggleMarket}
+          onRefresh={fetchMarkets}
+        />
+      )}
+
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-[#F5F6F8]/90 backdrop-blur-sm px-5 pt-5 pb-3">
+      <div className="flex-none bg-[#F5F6F8]/95 backdrop-blur-sm border-b border-[#E5E8EB] px-5 pt-4 pb-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-[#8B95A1]">{dateStr}</p>
@@ -164,9 +70,8 @@ export default function Home() {
             </svg>
           </button>
         </div>
-
         {digest && (
-          <div className="mt-4 flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1">
+          <div className="mt-3 flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-0.5">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -180,83 +85,129 @@ export default function Home() {
             ))}
           </div>
         )}
-      </header>
+      </div>
 
-      {/* Body */}
-      <main className="px-5 pb-12 space-y-3">
-        {error && (
-          <div className="bg-red-50 border border-red-100 text-red-600 rounded-2xl p-4 text-sm">
-            {error}
+      {/* Content area */}
+      <div className="flex-1 overflow-hidden flex min-h-0">
+
+        {/* Chat tab — full height layout */}
+        {activeTab === 'chat' && (
+          <div className="flex-1 min-w-0 flex flex-col bg-[#F5F6F8]">
+            <ChatPanel digest={digest} messages={chatMessages} setMessages={setChatMessages} />
           </div>
         )}
 
-        {loading && !digest && (
-          <>
-            <SkeletonCard lines={5} />
-            <SkeletonCard lines={4} />
-            <SkeletonCard lines={4} />
-          </>
-        )}
+        {/* News column */}
+        {activeTab !== 'chat' && <div className="flex-1 overflow-y-auto min-w-0">
+          <div className="px-5 py-4 space-y-3 pb-12">
+            {error && (
+              <div className="bg-red-50 border border-red-100 text-red-600 rounded-2xl p-4 text-sm">{error}</div>
+            )}
 
-        {digest && (
-          <>
-            {/* 날짜 + 캐시 뱃지 */}
-            <div className="flex items-center gap-2 text-xs text-[#8B95A1] pt-1">
-              <span>{digest.date}</span>
-              {digest.cached && (
-                <span className="bg-gray-100 text-[#8B95A1] px-2 py-0.5 rounded-full">캐시됨</span>
-              )}
-            </div>
-
-            {/* 전체 탭 */}
-            {activeTab === 'all' && (
+            {loading && !digest && (
               <>
-                <InsightsCard insights={digest.investmentInsights} />
-                <SectionCard
-                  title="국내 경제 요약"
-                  badge="국내"
-                  summary={digest.korean.summary}
-                  keyThemes={digest.korean.keyThemes}
-                  headlines={digest.korean.headlines}
-                />
-                <SectionCard
-                  title="글로벌 경제 요약"
-                  badge="해외"
-                  summary={digest.global.summary}
-                  keyThemes={digest.global.keyThemes}
-                  headlines={digest.global.headlines}
-                />
+                <SkeletonCard lines={5} />
+                <SkeletonCard lines={4} />
+                <SkeletonCard lines={4} />
               </>
             )}
 
-            {/* 국내 탭 */}
-            {activeTab === 'korean' && (
-              <SectionCard
-                title="국내 경제"
-                badge="국내"
-                summary={digest.korean.summary}
-                keyThemes={digest.korean.keyThemes}
-                headlines={digest.korean.headlines}
-              />
-            )}
+            {digest && (
+              <>
+                <div className="flex items-center gap-2 text-xs text-[#8B95A1]">
+                  <span>{digest.date}</span>
+                  {digest.cached && (
+                    <span className="bg-gray-100 text-[#8B95A1] px-2 py-0.5 rounded-full">캐시됨</span>
+                  )}
+                </div>
 
-            {/* 해외 탭 */}
-            {activeTab === 'global' && (
-              <SectionCard
-                title="글로벌 경제"
-                badge="해외"
-                summary={digest.global.summary}
-                keyThemes={digest.global.keyThemes}
-                headlines={digest.global.headlines}
-              />
-            )}
+                {activeTab === 'all' && (
+                  <>
+                    {/* 분석 현황 */}
+                    {(digest.newsCount || digest.generatedAt) && (
+                      <div className="flex items-center gap-1.5 text-xs text-[#8B95A1] bg-white rounded-xl px-4 py-2.5">
+                        <svg className="w-3.5 h-3.5 text-[#3182F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        {digest.newsCount && (
+                          <span>국내 <strong className="text-[#191F28]">{digest.newsCount.korean}</strong>건 · 글로벌 <strong className="text-[#191F28]">{digest.newsCount.global}</strong>건 분석</span>
+                        )}
+                        {digest.generatedAt && (
+                          <span className="ml-auto text-[#B0B8C1]">
+                            업데이트 {new Date(digest.generatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <InsightsCard
+                      insights={digest.investmentInsights}
+                      koreanHeadlines={digest.korean.headlines}
+                      globalHeadlines={digest.global.headlines}
+                    />
+                    <div className="flex flex-col md:flex-row gap-3 items-start">
+                      <div className="flex-1 min-w-0">
+                        <SectionCard title="국내 경제 요약" badge="국내" summary={digest.korean.summary} macroView={digest.korean.macroView} realEstateView={digest.korean.realEstateView} techView={digest.korean.techView} signal={digest.korean.signal} signalReason={digest.korean.signalReason} riskLevel={digest.korean.riskLevel} keyThemes={digest.korean.keyThemes} headlines={digest.korean.headlines} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <SectionCard title="글로벌 경제 요약" badge="해외" summary={digest.global.summary} macroView={digest.global.macroView} realEstateView={digest.global.realEstateView} techView={digest.global.techView} signal={digest.global.signal} signalReason={digest.global.signalReason} riskLevel={digest.global.riskLevel} keyThemes={digest.global.keyThemes} headlines={digest.global.headlines} />
+                      </div>
+                    </div>
+                  </>
+                )}
 
-            <p className="text-center text-xs text-[#B0B8C1] pt-2">
-              매일 오전 8시 자동 업데이트
-            </p>
-          </>
+                {activeTab === 'korean' && (
+                  <SectionCard title="국내 경제" badge="국내" summary={digest.korean.summary} macroView={digest.korean.macroView} realEstateView={digest.korean.realEstateView} techView={digest.korean.techView} signal={digest.korean.signal} signalReason={digest.korean.signalReason} riskLevel={digest.korean.riskLevel} keyThemes={digest.korean.keyThemes} headlines={digest.korean.headlines} />
+                )}
+
+                {activeTab === 'global' && (
+                  <SectionCard title="글로벌 경제" badge="해외" summary={digest.global.summary} macroView={digest.global.macroView} realEstateView={digest.global.realEstateView} techView={digest.global.techView} signal={digest.global.signal} signalReason={digest.global.signalReason} riskLevel={digest.global.riskLevel} keyThemes={digest.global.keyThemes} headlines={digest.global.headlines} />
+                )}
+
+                {activeTab === 'keywords' && (
+                  <KeywordCloud
+                    koreanKeywords={digest.korean.keywords ?? []}
+                    globalKeywords={digest.global.keywords ?? []}
+                    koreanHeadlines={digest.korean.headlines}
+                    globalHeadlines={digest.global.headlines}
+                    koreanRawItems={digest.korean.rawItems ?? []}
+                    globalRawItems={digest.global.rawItems ?? []}
+                  />
+                )}
+
+                <p className="text-center text-xs text-[#B0B8C1] pt-2">매일 오전 8시 자동 업데이트</p>
+
+                {/* 면책 고지 */}
+                <div className="mt-4 px-1">
+                  <p className="text-[10px] text-[#B0B8C1] leading-relaxed text-center">
+                    ⚠️ 본 서비스는 AI가 뉴스를 자동 분석한 참고 정보로, 투자 권유나 금융 조언이 아닙니다.<br />
+                    투자 결정은 반드시 본인의 판단과 책임 하에 이루어져야 하며, 이로 인한 손실에 대해 어떠한 법적 책임도 지지 않습니다.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>}
+
+        {/* Market detail sidebar (desktop) */}
+        {selectedMarket && (
+          <div className="hidden lg:flex w-[380px] flex-none border-l border-[#E5E8EB] bg-white overflow-y-auto flex-col">
+            <MarketDetailPanel market={selectedMarket} onClose={() => setSelectedMarket(null)} />
+          </div>
         )}
-      </main>
+      </div>
+
+      {/* Market detail bottom sheet (mobile) */}
+      {selectedMarket && (
+        <div className="lg:hidden fixed inset-0 z-40 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedMarket(null)} />
+          <div className="relative bg-white rounded-t-3xl h-[72vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="flex-none flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-[#E5E8EB]" />
+            </div>
+            <MarketDetailPanel market={selectedMarket} onClose={() => setSelectedMarket(null)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

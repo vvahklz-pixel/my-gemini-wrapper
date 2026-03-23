@@ -15,10 +15,17 @@ export async function GET(request: Request) {
     if (cached) return Response.json({ ...cached, cached: true });
   }
 
-  const [koreanItems, globalItems] = await Promise.all([
-    Promise.all(KOREAN_SOURCES.map((s: { name: string; url: string }) => fetchFeed(s.url, s.name))).then((r) => r.flat()),
-    Promise.all(GLOBAL_SOURCES.map((s: { name: string; url: string }) => fetchFeed(s.url, s.name))).then((r) => r.flat()),
+  const [koreanResults, globalResults] = await Promise.all([
+    Promise.all(KOREAN_SOURCES.map((s) => fetchFeed(s.url, s.name).then((items) => ({ name: s.name, items })))),
+    Promise.all(GLOBAL_SOURCES.map((s) => fetchFeed(s.url, s.name).then((items) => ({ name: s.name, items })))),
   ]);
+
+  for (const r of koreanResults) {
+    console.log(`[국내] ${r.name}: ${r.items.length}건`);
+  }
+  const koreanItems = koreanResults.flatMap((r) => r.items);
+  const globalItems = globalResults.flatMap((r) => r.items);
+  console.log(`[국내 합계] ${koreanItems.length}건 | [해외 합계] ${globalItems.length}건`);
 
   if (koreanItems.length === 0 && globalItems.length === 0) {
     return Response.json({ error: '수집된 뉴스가 없습니다' }, { status: 404 });
@@ -26,11 +33,51 @@ export async function GET(request: Request) {
 
   try {
     const digest = await generateDigest(koreanItems, globalItems);
-    await saveDigest(digest);
+
+    // Enrich headlines with image URLs from raw RSS items (LLM returns links, we map to images)
+    const imageMap = new Map<string, string>();
+    for (const item of [...koreanItems, ...globalItems]) {
+      if (item.imageUrl && item.link) imageMap.set(item.link, item.imageUrl);
+    }
+    const enrichSection = (section: typeof digest.korean) => ({
+      ...section,
+      headlines: section.headlines.map((h) => ({
+        ...h,
+        imageUrl: imageMap.get(h.link),
+      })),
+    });
+    const enrichedDigest = {
+      ...digest,
+      korean: {
+        ...enrichSection(digest.korean),
+        rawItems: koreanItems.slice(0, 30).map((item) => ({
+          ...item,
+          description: item.description.slice(0, 200),
+        })),
+      },
+      global: {
+        ...enrichSection(digest.global),
+        rawItems: globalItems.slice(0, 30).map((item) => ({
+          ...item,
+          description: item.description.slice(0, 200),
+        })),
+      },
+    };
+
+    await saveDigest(enrichedDigest);
     cacheTime = Date.now();
-    return Response.json({ ...digest, cached: false });
+    return Response.json({
+      ...enrichedDigest,
+      cached: false,
+      newsCount: { korean: koreanItems.length, global: globalItems.length },
+    });
   } catch (error) {
-    console.error('Gemini 브리핑 생성 오류:', error);
+    console.error('브리핑 생성 오류:', error);
+    // 429 등 API 오류 시 마지막 캐시 데이터로 fallback
+    const fallback = await loadLatestDigest();
+    if (fallback) {
+      return Response.json({ ...fallback, cached: true });
+    }
     return Response.json(
       { error: error instanceof Error ? error.message : '브리핑 생성 실패' },
       { status: 500 }

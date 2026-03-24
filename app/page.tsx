@@ -10,6 +10,8 @@ import SkeletonCard from '@/app/components/SkeletonCard';
 import InsightsCard from '@/app/components/InsightsCard';
 import SectionCard from '@/app/components/SectionCard';
 import ChatPanel, { type Message as ChatMessage } from '@/app/components/ChatPanel';
+import SignalScorecard from '@/app/components/SignalScorecard';
+import { useSignal } from '@/app/hooks/useSignal';
 
 const TABS = [
   { id: 'all', label: '전체' },
@@ -24,15 +26,17 @@ type TabId = (typeof TABS)[number]['id'];
 export default function Home() {
   const { digest, loading, error, fetchDigest } = useDigest();
   const { markets, selectedMarket, setSelectedMarket, fetchMarkets, toggleMarket } = useMarkets();
+  const { signal, fetchSignal } = useSignal();
   const [activeTab, setActiveTab] = useState<TabId>('all');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     fetchDigest();
     fetchMarkets();
-    const interval = setInterval(fetchMarkets, 5 * 60 * 1000);
+    fetchSignal();
+    const interval = setInterval(() => { fetchMarkets(); fetchSignal(); }, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchDigest, fetchMarkets]);
+  }, [fetchDigest, fetchMarkets, fetchSignal]);
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
@@ -144,6 +148,7 @@ export default function Home() {
                       koreanHeadlines={digest.korean.headlines}
                       globalHeadlines={digest.global.headlines}
                     />
+                    {signal && <SignalScorecard data={signal} />}
                     <div className="flex flex-col md:flex-row gap-3 items-start">
                       <div className="flex-1 min-w-0">
                         <SectionCard title="국내 경제 요약" badge="국내" summary={digest.korean.summary} macroView={digest.korean.macroView} realEstateView={digest.korean.realEstateView} techView={digest.korean.techView} signal={digest.korean.signal} signalReason={digest.korean.signalReason} riskLevel={digest.korean.riskLevel} keyThemes={digest.korean.keyThemes} headlines={digest.korean.headlines} />
